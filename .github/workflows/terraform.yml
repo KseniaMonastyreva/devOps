@@ -3,13 +3,13 @@ name: Terraform Kubernetes
 on:
   push:
     branches:
-      - lab03
+      - main
     paths:
       - "terraform/**"
       - ".github/workflows/terraform.yml"
   pull_request:
     branches:
-      - lab03
+      - main
     paths:
       - "terraform/**"
       - ".github/workflows/terraform.yml"
