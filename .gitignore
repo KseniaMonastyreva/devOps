@@ -49,3 +49,6 @@ build/
 .m2/
 
 /node_modules
+-e 
+# Maven target directory
+target/
