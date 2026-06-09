@@ -54,18 +54,41 @@ variable "ingress_enabled" {
 variable "master_preset_id" {
   description = "Preset ID для master node"
   type        = number
-  default     = 1999
+  default     = 409
 }
 
 variable "worker_preset_id" {
   description = "Preset ID для worker node group"
-  default     = 1993
+  default     = 401
+}
+
+variable "worker_preset_sonar_id" {
+  description = "Preset ID для sonar qube node group"
+  type        = number
+  default     = 1699
 }
 
 variable "node_group_name" {
   description = "Имя основной worker node group."
   type        = string
   default     = "lab03-workers"
+}
+
+variable "node_count_sonar" {
+  description = "Количество worker-нод в sonar группе."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.node_count_sonar > 0
+    error_message = "node_count должен быть больше 0."
+  }
+}
+
+variable "node_group_name_sonar" {
+  description = "Имя группы для sonar"
+  type        = string
+  default     = "sonar"
 }
 
 variable "node_count" {

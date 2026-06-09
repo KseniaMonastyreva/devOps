@@ -12,7 +12,7 @@ terraform {
       s3 = "https://s3.timeweb.cloud"
     }
     bucket = "lab03"
-    key    = "terraform_k8s.tfstate"
+    key    = "terraform_k8s_sonar.tfstate"
     region = "ru-1"
 
     skip_credentials_validation = true
@@ -52,4 +52,30 @@ resource "twc_k8s_node_group" "main" {
   max_size = var.node_autoscaling ? var.node_max_size : null
 
   preset_id = var.worker_preset_id
+}
+
+resource "twc_k8s_node_group" "sonar" {
+  cluster_id = twc_k8s_cluster.main.id
+  name       = var.node_group_name_sonar
+  node_count = var.node_count_sonar
+
+  is_autohealing    = var.node_autohealing
+  is_autoscaling    = var.node_autoscaling
+  public_ip_enabled = var.node_public_ip_enabled
+
+  min_size = var.node_autoscaling ? var.node_min_size : null
+  max_size = var.node_autoscaling ? var.node_max_size : null
+
+  preset_id = var.worker_preset_sonar_id
+
+  labels {
+    key   = "dedicated"
+    value = "sonar"
+  }
+
+  taints {
+    key    = "dedicated"
+    value  = "sonar"
+    effect = "NoSchedule"
+  }
 }

@@ -24,6 +24,15 @@ output "node_group_id" {
   value       = twc_k8s_node_group.main.id
 }
 
+output "node_group_sonar_id" {
+  description = "ID основной sonar node group."
+  value       = twc_k8s_node_group.sonar.id
+}
+
+output "worker_preset_sonar_id" {
+  description = "Preset ID для sonar"
+  value       = var.worker_preset_sonar_id
+}
 output "cluster_status" {
   description = "Текущий статус managed Kubernetes кластера."
   value = twc_k8s_cluster.main.status
