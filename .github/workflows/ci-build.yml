@@ -3,10 +3,10 @@ name: CI Build Test VM
 on:
   push:
     branches:
-      - main
+      - lab04
   pull_request:
     branches:
-      - main
+      - lab04
   workflow_dispatch:
   workflow_run:
     workflows:
