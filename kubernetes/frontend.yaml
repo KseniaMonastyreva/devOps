@@ -13,6 +13,15 @@ spec:
       labels:
         app: frontend
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dedicated
+                    operator: NotIn
+                    values:
+                      - sonar
       imagePullSecrets:
         - name: ghcr-creds
       containers:
@@ -54,4 +63,4 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 80
-  type: ClusterIP 
+  type: ClusterIP

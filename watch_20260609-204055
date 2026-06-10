@@ -1,0 +1,19 @@
+NAME                                          REFERENCE        TARGETS       MINPODS   MAXPODS   REPLICAS   AGE                                            
+horizontalpodautoscaler.autoscaling/app-hpa   Deployment/app   cpu: 2%/15%   1         2         1          28d                                            
+                                                                                                                                                           
+NAME                                 READY   UP-TO-DATE   AVAILABLE   AGE                                                                                  
+deployment.apps/app                  1/1     1            1           33d                                                                                  
+deployment.apps/frontend             1/1     1            1           33d                                                                                  
+deployment.apps/grafana              1/1     1            1           33d                                                                                  
+deployment.apps/kube-state-metrics   1/1     1            1           33d                                                                                  
+deployment.apps/postgres             1/1     1            1           33d                                                                                  
+deployment.apps/prometheus           1/1     1            1           33d                                                                                  
+                                                                                                                                                           
+NAME                                     READY   STATUS             RESTARTS     AGE                                                                       
+pod/app-7475894695-fsxhx                 1/1     Running            4 (8d ago)   8d                                                                        
+pod/app-79967ddc9d-56xk8                 0/1     InvalidImageName   0            6h11m                                                                     
+pod/frontend-668b588bd8-s6rm4            0/1     InvalidImageName   0            6h11m                                                                     
+pod/frontend-c5f4565d8-655mz             1/1     Running            0            8d                                                                        
+pod/grafana-74766f986b-f5pml             1/1     Running            0            26d                                                                       
+pod/kube-state-metrics-b4d5bb8c5-zh4mp   1/1     Running            0            33d                                                                       
+pod/node-exporter-cqg9q                  1/1     Running            0            33d                                                                       

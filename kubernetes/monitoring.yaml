@@ -59,6 +59,15 @@ spec:
       labels:
         app: kube-state-metrics
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dedicated
+                    operator: NotIn
+                    values:
+                      - sonar
       serviceAccountName: kube-state-metrics
       containers:
         - name: kube-state-metrics
@@ -95,6 +104,15 @@ spec:
       labels:
         app: node-exporter
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dedicated
+                    operator: NotIn
+                    values:
+                      - sonar
       hostPID: true
       containers:
         - name: node-exporter
@@ -186,6 +204,15 @@ spec:
       labels:
         app: prometheus
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dedicated
+                    operator: NotIn
+                    values:
+                      - sonar
       containers:
         - name: prometheus
           image: prom/prometheus:v2.52.0
@@ -236,25 +263,12 @@ data:
         editable: false
 ---
 apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: grafana-pv
-spec:
-  capacity:
-    storage: 5Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /mnt/data/grafana
----
-apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: grafana-data
   namespace: lab03
 spec:
+  storageClassName: manual
   accessModes:
     - ReadWriteOnce
   resources:
@@ -276,6 +290,29 @@ spec:
       labels:
         app: grafana
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dedicated
+                    operator: NotIn
+                    values:
+                      - sonar
+      initContainers:
+        - name: init-grafana-permissions
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              mkdir -p /var/lib/grafana
+              chown -R 472:472 /var/lib/grafana
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
       containers:
         - name: grafana
           image: grafana/grafana:11.0.0
@@ -289,9 +326,14 @@ spec:
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "false"
           volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
       volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: grafana-data
         - name: datasources
           configMap:
             name: grafana-datasources

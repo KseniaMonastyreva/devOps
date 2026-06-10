@@ -15,6 +15,15 @@ spec:
       labels:
         app: postgres
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: dedicated
+                    operator: NotIn
+                    values:
+                      - sonar
       securityContext:
         fsGroup: 70
       containers:
@@ -66,9 +75,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-pvc
-  namespace:  lab03
+  namespace: lab03
 spec:
-  storageClassName: __POSTGRES_STORAGE_CLASS__
+  storageClassName: manual
   accessModes:
     - ReadWriteOnce
   resources:
