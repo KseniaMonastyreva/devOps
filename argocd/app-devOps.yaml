@@ -1,10 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: devOps
+  name: devops
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: devOps
+    app.kubernetes.io/part-of: devops
 spec:
   project: default
   source:

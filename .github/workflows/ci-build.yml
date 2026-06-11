@@ -317,7 +317,7 @@ jobs:
 
         - name: Register app in ArgoCD
           run: |
-            kubectl apply -f argocd/app-devOps.yaml
+            kubectl apply -f argocd/app-devops.yaml
 
         - name: Configure ingress-nginx
           run: |
