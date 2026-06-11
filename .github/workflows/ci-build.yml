@@ -449,7 +449,7 @@ jobs:
             kubectl -n lab03 get svc -o wide
             kubectl -n ingress-nginx get svc ingress-nginx-controller -o wide
             kubectl -n lab03 get ingress -o wide
-
+# 
   # load-test:
   #   name: K6 Load Test
   #   runs-on: ubuntu-latest
