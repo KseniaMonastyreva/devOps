@@ -297,6 +297,28 @@ jobs:
             kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.3/deploy/static/provider/cloud/deploy.yaml
             kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=240s
 
+        - name: Install ArgoCD
+          run: |
+            kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+            kubectl apply -n argocd \
+              -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.11.3/manifests/install.yaml
+            kubectl -n argocd apply -f - <<'EOF'
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: argocd-cmd-params-cm
+              namespace: argocd
+            data:
+              server.insecure: "true"
+              server.rootpath: "/argocd"
+            EOF
+            kubectl -n argocd rollout status deployment/argocd-server --timeout=180s
+            kubectl apply -f kubernetes/argocd-ingress.yaml
+
+        - name: Register app in ArgoCD
+          run: |
+            kubectl apply -f argocd/app-devOps.yaml
+
         - name: Configure ingress-nginx
           run: |
             kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type='merge' -p '{"spec":{"template":{"spec":{"hostNetwork":true,"dnsPolicy":"ClusterFirstWithHostNet"}}}}'
@@ -382,10 +404,30 @@ jobs:
             FRONTEND_IMAGE="ghcr.io/${REPO_LOWER}:frontend-sha-${{ github.sha }}"
             sed "s|__BACKEND_IMAGE__|$BACKEND_IMAGE|g" kubernetes/backend.yaml | kubectl apply -f -
             sed "s|__FRONTEND_IMAGE__|$FRONTEND_IMAGE|g" kubernetes/frontend.yaml | kubectl apply -f -
+            if [ "$POSTGRES_STORAGE_CLASS" = "manual" ]; then
+              if kubectl get pv grafana-pv >/dev/null 2>&1; then
+                echo "grafana-pv already exists; skipping PV apply to avoid immutable field update"
+              else
+                kubectl apply -f kubernetes/grafana-pv.yaml
+              fi
+            fi
             kubectl apply -f kubernetes/monitoring.yaml
+            if [ "$POSTGRES_STORAGE_CLASS" = "manual" ]; then
+              if kubectl get pv sonarqube-pv >/dev/null 2>&1; then
+                echo "sonarqube-pv already exists; skipping PV apply to avoid immutable field update"
+              else
+                kubectl apply -f kubernetes/sonarqube-pv.yaml
+              fi
+            fi
+            sed "s|__SONARQUBE_STORAGE_CLASS__|$POSTGRES_STORAGE_CLASS|g" kubernetes/sonarqube.yaml | kubectl apply -f -
             kubectl -n lab03 rollout restart deployment/prometheus
             kubectl -n lab03 rollout status deployment/prometheus --timeout=240s
             kubectl apply -f kubernetes/ingress.yaml
+
+        - name: Wait for SonarQube rollout
+          run: |
+            kubectl -n lab03 wait --for=condition=complete job/sonarqube-db-init --timeout=240s
+            kubectl -n lab03 rollout status deployment/sonarqube --timeout=600s
 
         - name: Wait for rollout
           run: |
