@@ -84,8 +84,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Run frontend tests
-        run: npm test
+      - name: Install Vitest coverage provider
+        run: |
+          VITEST_VERSION=$(node -e "const p=require('./package-lock.json'); const v=p.packages?.['node_modules/vitest']?.version||p.dependencies?.vitest?.version; console.log(v||'2')")
+          npm install --no-save "@vitest/coverage-v8@${VITEST_VERSION}"
+
+      - name: Run frontend tests with coverage
+        run: npx vitest run --coverage.enabled=true --coverage.provider=v8 --coverage.reporter=lcov --coverage.reporter=text-summary
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/lcov.info
+          if-no-files-found: error
 
   build-backend-jar:
     name: Build Backend JAR And Upload Artifact

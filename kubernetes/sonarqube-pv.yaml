@@ -11,17 +11,3 @@ spec:
   storageClassName: manual
   hostPath:
     path: /var/lib/lab03/sonarqube
-    type: DirectoryOrCreate
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sonarqube-pvc
-  namespace: lab03
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 20Gi
-  storageClassName: manual
