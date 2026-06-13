@@ -328,9 +328,9 @@ jobs:
             kubectl -n argocd rollout status deployment/argocd-server --timeout=180s
             kubectl apply -f kubernetes/argocd-ingress.yaml
 
-        - name: Register app in ArgoCD
-          run: |
-            kubectl apply -f argocd/app-devops-lab.yaml
+        # - name: Register app in ArgoCD
+        #   run: |
+        #     kubectl apply -f argocd/app-devops-lab.yaml
 
         - name: Configure ingress-nginx
           run: |
