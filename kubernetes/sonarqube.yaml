@@ -110,13 +110,10 @@ spec:
           volumeMounts:
             - name: sonarqube-data
               mountPath: /opt/sonarqube/data
-              subPath: data
             - name: sonarqube-data
               mountPath: /opt/sonarqube/extensions
-              subPath: extensions
             - name: sonarqube-data
               mountPath: /opt/sonarqube/logs
-              subPath: logs
           readinessProbe:
             httpGet:
               path: /
