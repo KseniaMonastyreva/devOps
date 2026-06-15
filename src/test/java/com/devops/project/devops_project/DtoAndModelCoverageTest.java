@@ -9,6 +9,7 @@ import com.devops.project.devops_project.models.User;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Month;
 import java.time.LocalDateTime;
 import java.util.Map;
 
@@ -30,11 +31,12 @@ class DtoAndModelCoverageTest {
         ProductUpdateRequest productUpdateRequest = new ProductUpdateRequest("Phone", "description description description", "img", new BigDecimal("2.00"));
         RegisterRequest registerRequest = new RegisterRequest("user", "user@example.com", "password123");
         ReviewCreateRequest reviewCreateRequest = new ReviewCreateRequest("t", "b", 5, 1L);
-        ReviewResponse reviewResponse = new ReviewResponse(1L, "t", "b", 5, LocalDateTime.now(), LocalDateTime.now(), 1L, 2L);
+        LocalDateTime fixedDateTime = LocalDateTime.of(2024, Month.JANUARY, 1, 12, 0, 0);
+        ReviewResponse reviewResponse = new ReviewResponse(1L, "t", "b", 5, fixedDateTime, fixedDateTime, 1L, 2L);
         ReviewUpdateRequest reviewUpdateRequest = new ReviewUpdateRequest("t", "b", 4, 1L);
         UserCreateRequest userCreateRequest = new UserCreateRequest("user", "user@example.com", "password123");
         UserUpdateRequest userUpdateRequest = new UserUpdateRequest("user", "user@example.com");
-        ApiErrorResponse apiErrorResponse = new ApiErrorResponse(LocalDateTime.now(), 400, "Bad Request", "error", "/api", Map.of("field", "msg"));
+        ApiErrorResponse apiErrorResponse = new ApiErrorResponse(fixedDateTime, 400, "Bad Request", "error", "/api", Map.of("field", "msg"));
 
         assertEquals("token", authResponse.token());
         assertEquals("oldpass12", changePasswordRequest.oldPassword());

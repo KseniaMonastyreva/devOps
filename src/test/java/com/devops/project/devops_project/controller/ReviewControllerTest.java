@@ -13,6 +13,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 
 import java.time.LocalDateTime;
+import java.time.Month;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -49,7 +50,9 @@ class ReviewControllerTest {
     @Test
     void createShouldUseAuthenticationName() {
         ReviewCreateRequest request = new ReviewCreateRequest("t", "b", 5, 1L);
-        Authentication authentication = new UsernamePasswordAuthenticationToken("user@example.com", null);
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken("user@example.com", null);
+
         when(reviewService.create(request, "user@example.com")).thenReturn(response());
 
         ReviewResponse result = reviewController.create(request, authentication);
@@ -75,6 +78,24 @@ class ReviewControllerTest {
     }
 
     private ReviewResponse response() {
-        return new ReviewResponse(1L, "t", "b", 5, LocalDateTime.now(), LocalDateTime.now(), 5L, 7L);
+        LocalDateTime fixedDateTime = LocalDateTime.of(
+                2024,
+                Month.JANUARY,
+                1,
+                12,
+                0,
+                0
+        );
+
+        return new ReviewResponse(
+                1L,
+                "t",
+                "b",
+                5,
+                fixedDateTime,
+                fixedDateTime,
+                5L,
+                7L
+        );
     }
 }

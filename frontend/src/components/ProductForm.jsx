@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PropTypes from 'prop-types';
 import { createProduct, updateProduct } from '../api/apiClient';
 
 export default function ProductForm({ product, onClose }) {
@@ -12,7 +13,7 @@ export default function ProductForm({ product, onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    const payload = { name, description, picture, price: parseFloat(price) };
+    const payload = { name, description, picture, price: Number.parseFloat(price) };
     try {
       if (isEdit) {
         await updateProduct(product.id, payload);
@@ -85,3 +86,14 @@ export default function ProductForm({ product, onClose }) {
     </div>
   );
 }
+
+ProductForm.propTypes = {
+  product: PropTypes.shape({
+    id: PropTypes.number,
+    name: PropTypes.string,
+    description: PropTypes.string,
+    picture: PropTypes.string,
+    price: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  }),
+  onClose: PropTypes.func.isRequired,
+};

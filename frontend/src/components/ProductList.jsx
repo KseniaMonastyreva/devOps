@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { getProducts, deleteProduct } from '../api/apiClient';
 import ProductForm from './ProductForm';
 
@@ -25,7 +26,7 @@ export default function ProductList({ user }) {
   }, []);
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this product?')) return;
+    if (!globalThis.confirm('Delete this product?')) return;
     try {
       await deleteProduct(id);
       await loadProducts();
@@ -88,3 +89,9 @@ export default function ProductList({ user }) {
     </div>
   );
 }
+
+ProductList.propTypes = {
+  user: PropTypes.shape({
+    roles: PropTypes.arrayOf(PropTypes.string),
+  }),
+};

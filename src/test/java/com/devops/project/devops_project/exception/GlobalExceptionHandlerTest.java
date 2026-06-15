@@ -144,6 +144,8 @@ class GlobalExceptionHandlerTest {
     }
 
     static class Dummy {
+        // Empty method used to obtain Method object for testing MethodArgumentNotValidException handler
+        // The method signature matches a typical controller method that would validate a request body
         void register(RegisterRequest request) {
         }
     }

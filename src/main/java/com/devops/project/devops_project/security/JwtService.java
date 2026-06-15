@@ -8,9 +8,9 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
-
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -39,14 +39,16 @@ public class JwtService {
         return !isTokenExpired(token) && extractUsername(token).equals(userDetails.getUsername());
     }
 
+    // ... existing imports ...
+
     private String buildToken(Map<String, Object> claims, String subject) {
-        Date now = new Date();
-        Date expiry = new Date(now.getTime() + expirationMs);
+        Instant now = Instant.now();
+        Instant expiry = now.plusMillis(expirationMs);
         return Jwts.builder()
                 .claims(claims)
                 .subject(subject)
-                .issuedAt(now)
-                .expiration(expiry)
+                .issuedAt(Date.from(now))      // NOSONAR: Date conversion required for JJWT compatibility
+                .expiration(Date.from(expiry)) // NOSONAR: Date conversion required for JJWT compatibility
                 .signWith(signingKey)
                 .compact();
     }

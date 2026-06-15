@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { getReviews, deleteReview, getProducts } from '../api/apiClient';
 import ReviewForm from './ReviewForm';
 
@@ -25,7 +26,7 @@ export default function ReviewList({ user }) {
   }, []);
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this review?')) return;
+    if (!globalThis.confirm('Delete this review?')) return;
     try {
       await deleteReview(id);
       await loadData();
@@ -99,3 +100,9 @@ export default function ReviewList({ user }) {
     </div>
   );
 }
+
+ReviewList.propTypes = {
+  user: PropTypes.shape({
+    roles: PropTypes.arrayOf(PropTypes.string),
+  }),
+};
