@@ -430,226 +430,269 @@ jobs:
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
             -d text="Job ${{ github.job }} finished with status: ${{ job.status }}"
+
+    argo-cd-release:
+    name: ArgoCD Release
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/argocd04' && github.actor != 'github-actions[bot]' }}
+    needs: [push-backend-image, push-frontend-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Update backend and frontend image tags for ArgoCD
+        run: |
+          REPO_LOWER="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          BACKEND_IMAGE="ghcr.io/${REPO_LOWER}:sha-${{ github.sha }}"
+          FRONTEND_IMAGE="ghcr.io/${REPO_LOWER}:frontend-sha-${{ github.sha }}"
+
+          sed -i.bak -E "s|(^[[:space:]]*image:[[:space:]]*).*$|\\1${BACKEND_IMAGE}|" kubernetes/backend.yaml
+          sed -i.bak -E "s|(^[[:space:]]*image:[[:space:]]*).*$|\\1${FRONTEND_IMAGE}|" kubernetes/frontend.yaml
+          rm -f kubernetes/*.bak
+
+      - name: Commit and push manifest updates
+        run: |
+          if git diff --quiet -- kubernetes/backend.yaml kubernetes/frontend.yaml; then
+            echo "No GitOps image updates required"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add kubernetes/backend.yaml kubernetes/frontend.yaml
+          git commit -m "ci(gitops): update images for ArgoCD"
+          git push
+      
+      - name: Notify Telegram
+        if: always()
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+            -d text="Job ${{ github.job }} finished with status: ${{ job.status }}"
         
-  kubernetes:
-      name: Deploy to Kubernetes
-      if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
-      needs: [build-and-push-images]
-      runs-on: ubuntu-latest
-      permissions:
-        contents: read
-        packages: read
-      env:
-        TF_VAR_twc_token: ${{ secrets.TF_VAR_TWC_TOKEN }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.TF_S3_ACCESS_KEY }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_S3_SECRET_KEY }}
-        TF_S3_BUCKET: ${{ secrets.TF_S3_BUCKET }}
-        GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
-        POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-        POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        SECURITY_JWT_SECRET: ${{ secrets.SECURITY_JWT_SECRET_PROD }}
-        APP_ADMIN_USERNAME: ${{ secrets.APP_ADMIN_USERNAME_PROD }}
-        APP_ADMIN_EMAIL: ${{ secrets.APP_ADMIN_EMAIL_PROD }}
-        APP_ADMIN_PASSWORD: ${{ secrets.APP_ADMIN_PASSWORD_PROD }}
-        ARGOCD_REPO_TOKEN: ${{ secrets.ARGOCD_REPO_TOKEN }}
-      steps:
-        - name: Checkout
-          uses: actions/checkout@v5
-          with:
-            ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+  # kubernetes:
+  #     name: Deploy to Kubernetes
+  #     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+  #     needs: [build-and-push-images]
+  #     runs-on: ubuntu-latest
+  #     permissions:
+  #       contents: read
+  #       packages: read
+  #     env:
+  #       TF_VAR_twc_token: ${{ secrets.TF_VAR_TWC_TOKEN }}
+  #       AWS_ACCESS_KEY_ID: ${{ secrets.TF_S3_ACCESS_KEY }}
+  #       AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_S3_SECRET_KEY }}
+  #       TF_S3_BUCKET: ${{ secrets.TF_S3_BUCKET }}
+  #       GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+  #       POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+  #       POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+  #       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+  #       SECURITY_JWT_SECRET: ${{ secrets.SECURITY_JWT_SECRET_PROD }}
+  #       APP_ADMIN_USERNAME: ${{ secrets.APP_ADMIN_USERNAME_PROD }}
+  #       APP_ADMIN_EMAIL: ${{ secrets.APP_ADMIN_EMAIL_PROD }}
+  #       APP_ADMIN_PASSWORD: ${{ secrets.APP_ADMIN_PASSWORD_PROD }}
+  #       ARGOCD_REPO_TOKEN: ${{ secrets.ARGOCD_REPO_TOKEN }}
+  #     steps:
+  #       - name: Checkout
+  #         uses: actions/checkout@v5
+  #         with:
+  #           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-        - name: Set up Terraform
-          uses: hashicorp/setup-terraform@v4
+  #       - name: Set up Terraform
+  #         uses: hashicorp/setup-terraform@v4
 
-        - name: Set up kubectl
-          uses: azure/setup-kubectl@v4
+  #       - name: Set up kubectl
+  #         uses: azure/setup-kubectl@v4
 
-        - name: Build kubeconfig from Terraform output
-          working-directory: terraform
-          run: |
-            terraform init -input=false -backend-config="bucket=${TF_S3_BUCKET}"
-            terraform output -raw kubeconfig > "$RUNNER_TEMP/kubeconfig"
-            chmod 600 "$RUNNER_TEMP/kubeconfig"
-            echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+  #       - name: Build kubeconfig from Terraform output
+  #         working-directory: terraform
+  #         run: |
+  #           terraform init -input=false -backend-config="bucket=${TF_S3_BUCKET}"
+  #           terraform output -raw kubeconfig > "$RUNNER_TEMP/kubeconfig"
+  #           chmod 600 "$RUNNER_TEMP/kubeconfig"
+  #           echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
 
-        # - name: Create namespace
-        #   run: kubectl apply -f kubernetes/namespace.yaml
+  #       # - name: Create namespace
+  #       #   run: kubectl apply -f kubernetes/namespace.yaml
 
-        # - name: Install ingress-nginx controller
-        #   run: |
-        #     kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.3/deploy/static/provider/cloud/deploy.yaml
-        #     kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=240s
+  #       # - name: Install ingress-nginx controller
+  #       #   run: |
+  #       #     kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.3/deploy/static/provider/cloud/deploy.yaml
+  #       #     kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=240s
 
-        # - name: Install ArgoCD
-        #   run: |
-        #     kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-        #     kubectl apply -n argocd \
-        #       -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.11.3/manifests/install.yaml
-        #     kubectl -n argocd apply -f - <<'EOF'
-        #     apiVersion: v1
-        #     kind: ConfigMap
-        #     metadata:
-        #       name: argocd-cmd-params-cm
-        #       namespace: argocd
-        #     data:
-        #       server.insecure: "true"
-        #       server.rootpath: "/argocd"
-        #     EOF
-        #     kubectl -n argocd rollout status deployment/argocd-server --timeout=180s
-        #     kubectl apply -f kubernetes/argocd-ingress.yaml
+  #       # - name: Install ArgoCD
+  #       #   run: |
+  #       #     kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+  #       #     kubectl apply -n argocd \
+  #       #       -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.11.3/manifests/install.yaml
+  #       #     kubectl -n argocd apply -f - <<'EOF'
+  #       #     apiVersion: v1
+  #       #     kind: ConfigMap
+  #       #     metadata:
+  #       #       name: argocd-cmd-params-cm
+  #       #       namespace: argocd
+  #       #     data:
+  #       #       server.insecure: "true"
+  #       #       server.rootpath: "/argocd"
+  #       #     EOF
+  #       #     kubectl -n argocd rollout status deployment/argocd-server --timeout=180s
+  #       #     kubectl apply -f kubernetes/argocd-ingress.yaml
 
-        - name: Register ArgoCD repo credentials
-          run: |
-            REPO_TOKEN="$ARGOCD_REPO_TOKEN"
-            if [ -z "$REPO_TOKEN" ]; then
-            echo "ARGOCD_REPO_TOKEN is required"
-            exit 1
-            fi
-            kubectl -n argocd create secret generic devops-project-repo \
-            --from-literal=type=git \
-            --from-literal=url=https://github.com/KseniaMonastyreva/devOps.git \
-            --from-literal=username=git \
-            --from-literal=password="$REPO_TOKEN" \
-            --dry-run=client -o yaml | \
-            kubectl -n argocd label --local --overwrite -f - \
-              argocd.argoproj.io/secret-type=repository -o yaml | \
-            kubectl apply -f -
+  #       - name: Register ArgoCD repo credentials
+  #         run: |
+  #           REPO_TOKEN="$ARGOCD_REPO_TOKEN"
+  #           if [ -z "$REPO_TOKEN" ]; then
+  #           echo "ARGOCD_REPO_TOKEN is required"
+  #           exit 1
+  #           fi
+  #           kubectl -n argocd create secret generic devops-project-repo \
+  #           --from-literal=type=git \
+  #           --from-literal=url=https://github.com/KseniaMonastyreva/devOps.git \
+  #           --from-literal=username=git \
+  #           --from-literal=password="$REPO_TOKEN" \
+  #           --dry-run=client -o yaml | \
+  #           kubectl -n argocd label --local --overwrite -f - \
+  #             argocd.argoproj.io/secret-type=repository -o yaml | \
+  #           kubectl apply -f -
 
-        - name: Register app in ArgoCD
-          run: |
-            kubectl apply -f argocd/app-devops-lab.yaml
+  #       - name: Register app in ArgoCD
+  #         run: |
+  #           kubectl apply -f argocd/app-devops-lab.yaml
 
-        # - name: Configure ingress-nginx
-        #   run: |
-        #     kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type='merge' -p '{"spec":{"template":{"spec":{"hostNetwork":true,"dnsPolicy":"ClusterFirstWithHostNet"}}}}'
-        #     kubectl -n ingress-nginx patch service ingress-nginx-controller --type='merge' -p '{"spec":{"type":"ClusterIP"}}'
-        #     kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=240s
+  #       # - name: Configure ingress-nginx
+  #       #   run: |
+  #       #     kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type='merge' -p '{"spec":{"template":{"spec":{"hostNetwork":true,"dnsPolicy":"ClusterFirstWithHostNet"}}}}'
+  #       #     kubectl -n ingress-nginx patch service ingress-nginx-controller --type='merge' -p '{"spec":{"type":"ClusterIP"}}'
+  #       #     kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=240s
 
-        # - name: Create or update image pull secret
-        #   run: |
-        #     if [ -z "$GHCR_PULL_TOKEN" ]; then
-        #       echo "GHCR_PULL_TOKEN secret is required to pull private images from GHCR in Kubernetes"
-        #       exit 1
-        #     fi
-        #     kubectl -n lab03 create secret docker-registry ghcr-creds \
-        #       --docker-server=ghcr.io \
-        #       --docker-username="${{ github.actor }}" \
-        #       --docker-password="$GHCR_PULL_TOKEN" \
-        #       --dry-run=client -o yaml | kubectl apply -f -
+  #       # - name: Create or update image pull secret
+  #       #   run: |
+  #       #     if [ -z "$GHCR_PULL_TOKEN" ]; then
+  #       #       echo "GHCR_PULL_TOKEN secret is required to pull private images from GHCR in Kubernetes"
+  #       #       exit 1
+  #       #     fi
+  #       #     kubectl -n lab03 create secret docker-registry ghcr-creds \
+  #       #       --docker-server=ghcr.io \
+  #       #       --docker-username="${{ github.actor }}" \
+  #       #       --docker-password="$GHCR_PULL_TOKEN" \
+  #       #       --dry-run=client -o yaml | kubectl apply -f -
 
-        # - name: Create or update application secrets
-        #   run: |
-        #     SPRING_DATASOURCE_URL="jdbc:postgresql://postgres.lab03.svc.cluster.local:5432/$POSTGRES_DB"
-        #     kubectl -n lab03 create secret generic app-secrets \
-        #       --from-literal=POSTGRES_DB="$POSTGRES_DB" \
-        #       --from-literal=POSTGRES_USER="$POSTGRES_USER" \
-        #       --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-        #       --from-literal=SPRING_DATASOURCE_URL="$SPRING_DATASOURCE_URL" \
-        #       --from-literal=SPRING_DATASOURCE_USERNAME="$POSTGRES_USER" \
-        #       --from-literal=SPRING_DATASOURCE_PASSWORD="$POSTGRES_PASSWORD" \
-        #       --from-literal=SECURITY_JWT_SECRET="$SECURITY_JWT_SECRET" \
-        #       --from-literal=APP_ADMIN_USERNAME="$APP_ADMIN_USERNAME" \
-        #       --from-literal=APP_ADMIN_EMAIL="$APP_ADMIN_EMAIL" \
-        #       --from-literal=APP_ADMIN_PASSWORD="$APP_ADMIN_PASSWORD" \
-        #       --dry-run=client -o yaml | kubectl apply -f -
+  #       # - name: Create or update application secrets
+  #       #   run: |
+  #       #     SPRING_DATASOURCE_URL="jdbc:postgresql://postgres.lab03.svc.cluster.local:5432/$POSTGRES_DB"
+  #       #     kubectl -n lab03 create secret generic app-secrets \
+  #       #       --from-literal=POSTGRES_DB="$POSTGRES_DB" \
+  #       #       --from-literal=POSTGRES_USER="$POSTGRES_USER" \
+  #       #       --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  #       #       --from-literal=SPRING_DATASOURCE_URL="$SPRING_DATASOURCE_URL" \
+  #       #       --from-literal=SPRING_DATASOURCE_USERNAME="$POSTGRES_USER" \
+  #       #       --from-literal=SPRING_DATASOURCE_PASSWORD="$POSTGRES_PASSWORD" \
+  #       #       --from-literal=SECURITY_JWT_SECRET="$SECURITY_JWT_SECRET" \
+  #       #       --from-literal=APP_ADMIN_USERNAME="$APP_ADMIN_USERNAME" \
+  #       #       --from-literal=APP_ADMIN_EMAIL="$APP_ADMIN_EMAIL" \
+  #       #       --from-literal=APP_ADMIN_PASSWORD="$APP_ADMIN_PASSWORD" \
+  #       #       --dry-run=client -o yaml | kubectl apply -f -
 
-        # - name: Resolve storage class for postgres PVC
-        #   id: storage
-        #   run: |
-        #     DEFAULT_SC=$(kubectl get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' | head -n1)
-        #     if [ -z "$DEFAULT_SC" ]; then
-        #       DEFAULT_SC=$(kubectl get storageclass -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-        #     fi
-        #     if [ -z "$DEFAULT_SC" ]; then
-        #       echo "No StorageClass found. Falling back to static PV with storageClassName=manual"
-        #       DEFAULT_SC="manual"
-        #       echo "use_static_pv=true" >> "$GITHUB_OUTPUT"
-        #     else
-        #       echo "use_static_pv=false" >> "$GITHUB_OUTPUT"
-        #     fi
-        #     echo "Using StorageClass: $DEFAULT_SC"
-        #     echo "POSTGRES_STORAGE_CLASS=$DEFAULT_SC" >> "$GITHUB_ENV"
+  #       # - name: Resolve storage class for postgres PVC
+  #       #   id: storage
+  #       #   run: |
+  #       #     DEFAULT_SC=$(kubectl get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' | head -n1)
+  #       #     if [ -z "$DEFAULT_SC" ]; then
+  #       #       DEFAULT_SC=$(kubectl get storageclass -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+  #       #     fi
+  #       #     if [ -z "$DEFAULT_SC" ]; then
+  #       #       echo "No StorageClass found. Falling back to static PV with storageClassName=manual"
+  #       #       DEFAULT_SC="manual"
+  #       #       echo "use_static_pv=true" >> "$GITHUB_OUTPUT"
+  #       #     else
+  #       #       echo "use_static_pv=false" >> "$GITHUB_OUTPUT"
+  #       #     fi
+  #       #     echo "Using StorageClass: $DEFAULT_SC"
+  #       #     echo "POSTGRES_STORAGE_CLASS=$DEFAULT_SC" >> "$GITHUB_ENV"
 
-        # - name: Apply static PV fallback
-        #   if: ${{ steps.storage.outputs.use_static_pv == 'true' }}
-        #   run: kubectl apply -f kubernetes/postgres-pv.yaml
+  #       # - name: Apply static PV fallback
+  #       #   if: ${{ steps.storage.outputs.use_static_pv == 'true' }}
+  #       #   run: kubectl apply -f kubernetes/postgres-pv.yaml
 
-        # - name: Recreate pending PVC without storage class
-        #   run: |
-        #     CURRENT_PHASE=$(kubectl -n lab03 get pvc postgres-pvc -o jsonpath='{.status.phase}' 2>/dev/null || true)
-        #     CURRENT_SC=$(kubectl -n lab03 get pvc postgres-pvc -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
-        #     if [ "$CURRENT_SC" = "<no value>" ]; then
-        #       CURRENT_SC=""
-        #     fi
-        #     if [ "$CURRENT_PHASE" = "Pending" ] && [ "$CURRENT_SC" != "$POSTGRES_STORAGE_CLASS" ]; then
-        #       echo "Deleting pending pvc/postgres-pvc (phase=$CURRENT_PHASE, storageClassName=$CURRENT_SC)"
-        #       kubectl -n lab03 delete pvc postgres-pvc --ignore-not-found=true
-        #     fi
+  #       # - name: Recreate pending PVC without storage class
+  #       #   run: |
+  #       #     CURRENT_PHASE=$(kubectl -n lab03 get pvc postgres-pvc -o jsonpath='{.status.phase}' 2>/dev/null || true)
+  #       #     CURRENT_SC=$(kubectl -n lab03 get pvc postgres-pvc -o jsonpath='{.spec.storageClassName}' 2>/dev/null || true)
+  #       #     if [ "$CURRENT_SC" = "<no value>" ]; then
+  #       #       CURRENT_SC=""
+  #       #     fi
+  #       #     if [ "$CURRENT_PHASE" = "Pending" ] && [ "$CURRENT_SC" != "$POSTGRES_STORAGE_CLASS" ]; then
+  #       #       echo "Deleting pending pvc/postgres-pvc (phase=$CURRENT_PHASE, storageClassName=$CURRENT_SC)"
+  #       #       kubectl -n lab03 delete pvc postgres-pvc --ignore-not-found=true
+  #       #     fi
 
-        # - name: Apply postgres manifests
-        #   run: |
-        #     kubectl apply -f kubernetes/frontend-nginx-config.yaml
-        #     sed "s|__POSTGRES_STORAGE_CLASS__|$POSTGRES_STORAGE_CLASS|g" kubernetes/postgres.yaml | kubectl apply -f -
+  #       # - name: Apply postgres manifests
+  #       #   run: |
+  #       #     kubectl apply -f kubernetes/frontend-nginx-config.yaml
+  #       #     sed "s|__POSTGRES_STORAGE_CLASS__|$POSTGRES_STORAGE_CLASS|g" kubernetes/postgres.yaml | kubectl apply -f -
 
-        # - name: Wait for postgres PVC to bind
-        #   run: kubectl -n lab03 wait --for=jsonpath='{.status.phase}'=Bound pvc/postgres-pvc --timeout=180s
+  #       # - name: Wait for postgres PVC to bind
+  #       #   run: kubectl -n lab03 wait --for=jsonpath='{.status.phase}'=Bound pvc/postgres-pvc --timeout=180s
 
-        # - name: Wait for postgres rollout
-        #   run: kubectl -n lab03 rollout status deployment/postgres --timeout=360s
+  #       # - name: Wait for postgres rollout
+  #       #   run: kubectl -n lab03 rollout status deployment/postgres --timeout=360s
 
-        # - name: Apply backend and frontend manifests
-        #   run: |
-        #     REPO_LOWER="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
-        #     BACKEND_IMAGE="ghcr.io/${REPO_LOWER}:sha-${{ github.sha }}"
-        #     FRONTEND_IMAGE="ghcr.io/${REPO_LOWER}:frontend-sha-${{ github.sha }}"
-        #     sed "s|__BACKEND_IMAGE__|$BACKEND_IMAGE|g" kubernetes/backend.yaml | kubectl apply -f -
-        #     sed "s|__FRONTEND_IMAGE__|$FRONTEND_IMAGE|g" kubernetes/frontend.yaml | kubectl apply -f -
-        #     if [ "$POSTGRES_STORAGE_CLASS" = "manual" ]; then
-        #       if kubectl get pv grafana-pv >/dev/null 2>&1; then
-        #         echo "grafana-pv already exists; skipping PV apply to avoid immutable field update"
-        #       else
-        #         kubectl apply -f kubernetes/grafana-pv.yaml
-        #       fi
-        #     fi
-        #     kubectl apply -f kubernetes/monitoring.yaml
-        #     if [ "$POSTGRES_STORAGE_CLASS" = "manual" ]; then
-        #       if kubectl get pv sonarqube-pv >/dev/null 2>&1; then
-        #         echo "sonarqube-pv already exists; skipping PV apply to avoid immutable field update"
-        #       else
-        #         kubectl apply -f kubernetes/sonarqube-pv.yaml
-        #       fi
-        #     fi
-        #     sed "s|__SONARQUBE_STORAGE_CLASS__|$POSTGRES_STORAGE_CLASS|g" kubernetes/sonarqube.yaml | kubectl apply -f -
-        #     kubectl -n lab03 rollout restart deployment/prometheus
-        #     kubectl -n lab03 rollout status deployment/prometheus --timeout=240s
-        #     kubectl apply -f kubernetes/ingress.yaml
+  #       # - name: Apply backend and frontend manifests
+  #       #   run: |
+  #       #     REPO_LOWER="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+  #       #     BACKEND_IMAGE="ghcr.io/${REPO_LOWER}:sha-${{ github.sha }}"
+  #       #     FRONTEND_IMAGE="ghcr.io/${REPO_LOWER}:frontend-sha-${{ github.sha }}"
+  #       #     sed "s|__BACKEND_IMAGE__|$BACKEND_IMAGE|g" kubernetes/backend.yaml | kubectl apply -f -
+  #       #     sed "s|__FRONTEND_IMAGE__|$FRONTEND_IMAGE|g" kubernetes/frontend.yaml | kubectl apply -f -
+  #       #     if [ "$POSTGRES_STORAGE_CLASS" = "manual" ]; then
+  #       #       if kubectl get pv grafana-pv >/dev/null 2>&1; then
+  #       #         echo "grafana-pv already exists; skipping PV apply to avoid immutable field update"
+  #       #       else
+  #       #         kubectl apply -f kubernetes/grafana-pv.yaml
+  #       #       fi
+  #       #     fi
+  #       #     kubectl apply -f kubernetes/monitoring.yaml
+  #       #     if [ "$POSTGRES_STORAGE_CLASS" = "manual" ]; then
+  #       #       if kubectl get pv sonarqube-pv >/dev/null 2>&1; then
+  #       #         echo "sonarqube-pv already exists; skipping PV apply to avoid immutable field update"
+  #       #       else
+  #       #         kubectl apply -f kubernetes/sonarqube-pv.yaml
+  #       #       fi
+  #       #     fi
+  #       #     sed "s|__SONARQUBE_STORAGE_CLASS__|$POSTGRES_STORAGE_CLASS|g" kubernetes/sonarqube.yaml | kubectl apply -f -
+  #       #     kubectl -n lab03 rollout restart deployment/prometheus
+  #       #     kubectl -n lab03 rollout status deployment/prometheus --timeout=240s
+  #       #     kubectl apply -f kubernetes/ingress.yaml
 
-        # - name: Wait for SonarQube rollout
-        #   run: |
-        #     kubectl -n lab03 wait --for=condition=complete job/sonarqube-db-init --timeout=240s
-        #     kubectl -n lab03 rollout status deployment/sonarqube --timeout=600s
+  #       # - name: Wait for SonarQube rollout
+  #       #   run: |
+  #       #     kubectl -n lab03 wait --for=condition=complete job/sonarqube-db-init --timeout=240s
+  #       #     kubectl -n lab03 rollout status deployment/sonarqube --timeout=600s
 
-        # - name: Wait for rollout
-        #   run: |
-        #     kubectl -n lab03 rollout status deployment/app --timeout=240s
-        #     kubectl -n lab03 rollout status deployment/frontend --timeout=180s
+  #       # - name: Wait for rollout
+  #       #   run: |
+  #       #     kubectl -n lab03 rollout status deployment/app --timeout=240s
+  #       #     kubectl -n lab03 rollout status deployment/frontend --timeout=180s
 
-        # - name: Kubernetes diagnostics on failure
-        #   if: failure()
-        #   run: |
-        #     kubectl -n lab03 get pvc,pods,deploy,svc -o wide || true
-        #     kubectl -n lab03 describe pvc postgres-pvc || true
-        #     kubectl -n lab03 describe deployment postgres || true
-        #     kubectl -n lab03 describe pod -l app=postgres || true
-        #     kubectl -n lab03 logs deployment/postgres --all-containers=true --tail=200 || true
-        #     kubectl -n lab03 get events --sort-by=.lastTimestamp | tail -n 100 || true
+  #       # - name: Kubernetes diagnostics on failure
+  #       #   if: failure()
+  #       #   run: |
+  #       #     kubectl -n lab03 get pvc,pods,deploy,svc -o wide || true
+  #       #     kubectl -n lab03 describe pvc postgres-pvc || true
+  #       #     kubectl -n lab03 describe deployment postgres || true
+  #       #     kubectl -n lab03 describe pod -l app=postgres || true
+  #       #     kubectl -n lab03 logs deployment/postgres --all-containers=true --tail=200 || true
+  #       #     kubectl -n lab03 get events --sort-by=.lastTimestamp | tail -n 100 || true
 
-        # - name: Show services
-        #   run: |
-        #     kubectl -n lab03 get svc -o wide
-        #     kubectl -n ingress-nginx get svc ingress-nginx-controller -o wide
-        #     kubectl -n lab03 get ingress -o wide
+  #       # - name: Show services
+  #       #   run: |
+  #       #     kubectl -n lab03 get svc -o wide
+  #       #     kubectl -n ingress-nginx get svc ingress-nginx-controller -o wide
+  #       #     kubectl -n lab03 get ingress -o wide
 # # 
 #   # load-test:
 #   #   name: K6 Load Test
