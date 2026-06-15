@@ -433,7 +433,7 @@ jobs:
 
   argo-cd-release:
     name: ArgoCD Release
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/argocd04' && github.actor != 'github-actions[bot]' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/lab04' && github.actor != 'github-actions[bot]' }}
     needs: [ build-and-push-images]
     runs-on: ubuntu-latest
     permissions:
