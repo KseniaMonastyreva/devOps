@@ -26,7 +26,7 @@ spec:
         - name: ghcr-creds
       containers:
         - name: app
-          image: ghcr.io/kseniamonastyreva/devops:sha-7dc5bf884c8cb2224a7c38c2db0d8a9b33ef5d4a
+          image: ghcr.io/kseniamonastyreva/devops:sha-73e324bbe70d588513e24c3cd59ac3956b671a77
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
