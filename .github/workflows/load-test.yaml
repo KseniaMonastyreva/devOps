@@ -1,0 +1,161 @@
+name: Load-Test
+
+on:
+  workflow_dispatch:
+        
+jobs:
+    load-test:
+        name: K6 Load Test
+        runs-on: ubuntu-latest
+        env:
+          TF_VAR_twc_token: ${{ secrets.TF_VAR_TWC_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.TF_S3_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.TF_S3_SECRET_KEY }}
+          TF_S3_BUCKET: ${{ secrets.TF_S3_BUCKET }}
+        steps:
+        - name: Checkout
+          uses: actions/checkout@v5
+
+        - name: Set up Terraform
+          uses: hashicorp/setup-terraform@v4
+
+        - name: Set up kubectl
+          uses: azure/setup-kubectl@v5
+
+        - name: Build kubeconfig from Terraform output
+          working-directory: terraform
+          run: |
+            terraform init -input=false -backend-config="bucket=${TF_S3_BUCKET}"
+            terraform output -raw kubeconfig > "$RUNNER_TEMP/kubeconfig"
+            chmod 600 "$RUNNER_TEMP/kubeconfig"
+            echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+        - name: Check HPA
+          run: kubectl -n lab03 get hpa app-hpa
+
+        - name: Create k6 script ConfigMap
+          run: |
+            kubectl -n lab03 create configmap k6-load-test-script \
+                --from-file=script.js=k6/load-test.js \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+        - name: Run k6 load test in Kubernetes
+          run: |
+            kubectl -n lab03 delete job k6-load-test --ignore-not-found=true
+            kubectl apply -f kubernetes/k6-load-test-job.yaml
+
+            (
+                MAX_REPLICAS=0
+                START_TS=$(date +%s)
+
+                while true; do
+                CURRENT_REPLICAS=$(kubectl -n lab03 get hpa app-hpa -o jsonpath='{.status.currentReplicas}' 2>/dev/null || echo 0)
+                DESIRED_REPLICAS=$(kubectl -n lab03 get hpa app-hpa -o jsonpath='{.status.desiredReplicas}' 2>/dev/null || echo 0)
+
+                if [ -z "$CURRENT_REPLICAS" ]; then
+                    CURRENT_REPLICAS=0
+                fi
+                if [ -z "$DESIRED_REPLICAS" ]; then
+                    DESIRED_REPLICAS=0
+                fi
+
+                CANDIDATE_MAX=$CURRENT_REPLICAS
+                if [ "$DESIRED_REPLICAS" -gt "$CANDIDATE_MAX" ]; then
+                    CANDIDATE_MAX=$DESIRED_REPLICAS
+                fi
+                if [ "$CANDIDATE_MAX" -gt "$MAX_REPLICAS" ]; then
+                    MAX_REPLICAS=$CANDIDATE_MAX
+                fi
+
+                COMPLETE_STATUS=$(kubectl -n lab03 get job k6-load-test -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)
+                FAILED_STATUS=$(kubectl -n lab03 get job k6-load-test -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)
+
+                if [ "$COMPLETE_STATUS" = "True" ] || [ "$FAILED_STATUS" = "True" ]; then
+                    break
+                fi
+
+                NOW_TS=$(date +%s)
+                if [ $((NOW_TS - START_TS)) -ge 480 ]; then
+                    echo "HPA monitor timeout reached" >&2
+                    break
+                fi
+
+                sleep 10
+                done
+
+                echo "$MAX_REPLICAS" > "$RUNNER_TEMP/max-hpa-replicas.txt"
+            ) &
+            HPA_MONITOR_PID=$!
+
+            kubectl -n lab03 wait --for=condition=complete --timeout=8m job/k6-load-test || true
+
+            COMPLETE_STATUS=$(kubectl -n lab03 get job k6-load-test -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' 2>/dev/null || true)
+            FAILED_STATUS=$(kubectl -n lab03 get job k6-load-test -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)
+
+            if [ "$COMPLETE_STATUS" = "True" ]; then
+                K6_EXIT_CODE=0
+            else
+                K6_EXIT_CODE=1
+            fi
+            
+            POD_NAME=$(kubectl -n lab03 get pods -l job-name=k6-load-test -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            if [ -n "$POD_NAME" ]; then
+                kubectl -n lab03 logs "$POD_NAME" > "$RUNNER_TEMP/k6-load-test.log" 2>&1 || true
+                kubectl -n lab03 cp "$POD_NAME:/results/k6-summary.json" "$RUNNER_TEMP/k6-summary.json" >/dev/null 2>&1 || true
+            fi
+
+            if [ "$FAILED_STATUS" = "True" ] && [ "$COMPLETE_STATUS" != "True" ]; then
+                echo "k6 Kubernetes job failed" >&2
+            elif [ "$COMPLETE_STATUS" != "True" ]; then
+                echo "k6 Kubernetes job did not reach Complete condition before timeout" >&2
+            fi
+
+            wait "$HPA_MONITOR_PID" || true
+            exit "$K6_EXIT_CODE"
+
+        - name: Collect scaling metrics
+          if: always()
+          run: |
+            kubectl -n lab03 get hpa app-hpa -o wide > "$RUNNER_TEMP/hpa-status.txt"
+            kubectl -n lab03 describe hpa app-hpa > "$RUNNER_TEMP/hpa-describe.txt"
+            kubectl -n lab03 get pods -l app=app -o wide > "$RUNNER_TEMP/backend-pods.txt"
+
+            CURRENT_REPLICAS=$(kubectl -n lab03 get hpa app-hpa -o jsonpath='{.status.currentReplicas}')
+            DESIRED_REPLICAS=$(kubectl -n lab03 get hpa app-hpa -o jsonpath='{.status.desiredReplicas}')
+            MAX_REPLICAS=$(cat "$RUNNER_TEMP/max-hpa-replicas.txt" 2>/dev/null || echo 0)
+
+            {
+                echo "## K6 HPA Validation"
+                echo "- HPA current replicas: ${CURRENT_REPLICAS}"
+                echo "- HPA desired replicas: ${DESIRED_REPLICAS}"
+                echo "- HPA max replicas during test: ${MAX_REPLICAS}"
+                echo "- k6 summary: saved as artifact (k6-summary.json)"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+        - name: Ensure backend scaled above one replica
+          run: |
+            MAX_REPLICAS=$(cat "$RUNNER_TEMP/max-hpa-replicas.txt" 2>/dev/null || echo 0)
+            if [ "$MAX_REPLICAS" -le 1 ]; then
+                echo "HPA did not scale above 1 replica during k6 test"
+                exit 1
+            fi
+
+        - name: Cleanup k6 Kubernetes resources
+          if: always()
+          run: |
+            kubectl -n lab03 delete job k6-load-test --ignore-not-found=true
+            kubectl -n lab03 delete configmap k6-load-test-script --ignore-not-found=true
+
+        - name: Upload artifacts
+          if: always()
+          uses: actions/upload-artifact@v7
+          with:
+            name: k6-load-test-results
+            path: |
+                ${{ runner.temp }}/k6-summary.json
+                ${{ runner.temp }}/hpa-status.txt
+                ${{ runner.temp }}/hpa-describe.txt
+                ${{ runner.temp }}/backend-pods.txt
+                ${{ runner.temp }}/max-hpa-replicas.txt
+                ${{ runner.temp }}/k6-load-test.log
+            if-no-files-found: warn       
