@@ -369,11 +369,8 @@ jobs:
             kubectl apply -f kubernetes/frontend-nginx-config.yaml
             sed "s|__POSTGRES_STORAGE_CLASS__|$POSTGRES_STORAGE_CLASS|g" kubernetes/postgres.yaml | kubectl apply -f -
 
-        - name: Wait for postgres PVC to bind
-          run: kubectl -n lab03 wait --for=condition=Bound pvc -l app=postgres --timeout=180s
-
         - name: Wait for postgres rollout
-          run: kubectl -n lab03 rollout status statefulset/postgres --timeout=360s
+          run: kubectl -n lab03 wait --for=condition=Ready pod/postgres-0 --timeout=180s
 
         - name: Apply backend and frontend manifests
           run: |
