@@ -26,7 +26,7 @@ spec:
         - name: ghcr-creds
       containers:
         - name: frontend
-          image: ghcr.io/kseniamonastyreva/devops:frontend-sha-73e324bbe70d588513e24c3cd59ac3956b671a77
+          image: ghcr.io/kseniamonastyreva/devops:frontend-sha-707a8936dbdc5f03d831fbdf263949a064f28200
           imagePullPolicy: Always
           ports:
             - containerPort: 80
